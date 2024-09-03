@@ -1,8 +1,10 @@
-import { Lox } from "./lox.ts";
+import { ErrorReporter } from "./error/error_reporter.ts";
 import { Token, TokenType } from "./token.ts";
 
 export class Scanner {
     readonly source: string;
+    readonly reporter: ErrorReporter;
+
     tokens: Token[] = [];
 
     private start: number = 0;
@@ -28,8 +30,9 @@ export class Scanner {
       ["while", TokenType.WHILE],
     ]);
 
-    constructor(script: string) {
+    constructor(script: string, reporter: ErrorReporter) {
         this.source = script;
+        this.reporter = reporter;
     }
 
     isAtEnd() {
@@ -94,7 +97,7 @@ export class Scanner {
           } else if (this.isAlpha(c)) {
             this.identifier();
           } else {
-            Lox.error(this.line, "Unexpected character.");
+            this.reporter.error(this.line, "Unexpected character.");
           }
           break;
       }
@@ -161,7 +164,7 @@ export class Scanner {
       }
 
       if (this.isAtEnd()) {
-        Lox.error(this.line, "Unterminated string.");
+        this.reporter.error(this.line, "Unterminated string.");
       }
 
       // Closing "

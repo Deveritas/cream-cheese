@@ -1,25 +1,19 @@
 import { Scanner } from "./scanner.ts";
 import { Token } from "./token.ts";
+import { DenoReporter } from "./error/error_reporter.ts";
 
 export class Lox {
     static hadError: boolean = false;
 
     static run(script: string): void {
-        const scanner = new Scanner(script);
+        const reporter = new DenoReporter()
+        const scanner = new Scanner(script, reporter);
         const tokens: Token[] = scanner.scanTokens();
 
         for (const token of tokens) {
             console.log(token);
         }
-    }
 
-    static error(line:number, message: string) {
-        this.report(line, "", message);
-    }
-
-    static report(line: number, where: string, message: string) {
-        const encoder = new TextEncoder();
-        Deno.stderr.writeSync(encoder.encode(`[line ${line}] Error${where}: ${message}`));
-        this.hadError = true;
+        if (reporter.hadError) this.hadError = true;
     }
 }

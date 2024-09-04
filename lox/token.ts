@@ -18,20 +18,66 @@ export enum TokenType {
     EOF
 }
 
-export class Token {
-    readonly type: TokenType;
-    readonly lexeme: string;
-    readonly literal: string | number | null;
-    readonly line: number;
+type LiteralToken = {
+    type: TokenType.NUMBER,
+    literal: number,
+} | {
+    type: TokenType.STRING,
+    literal: string,
+};
 
-    constructor(type: TokenType, lexeme: string, literal: string | number | null, line: number) {
-        this.type = type;
-        this.lexeme = lexeme;
-        this.literal = literal;
-        this.line = line;
-    }
+export type Token = {
+    lexeme: string,
+    line: number,
+    [Symbol.toStringTag](): string,
+} & (LiteralToken | { type: Exclude<TokenType, LiteralToken['type']> })
 
-    [Symbol.toStringTag]() {
-        return `${this.type} ${this.lexeme} ${this.literal}`;
+export type LiteralFor<TType extends TokenType> = TType extends TokenType.NUMBER | TokenType.STRING 
+    ? Extract<Token, { type: TType, literal: string | number }>['literal'] 
+    : null;
+
+export function makeToken<TType extends TokenType>(type: TType, lexeme: string, literal: LiteralFor<TType>, line: number): Token {
+    if (type === TokenType.NUMBER) {
+        return {
+            type,
+            lexeme,
+            literal: literal as number,
+            line,
+
+            [Symbol.toStringTag]() {
+                return `${this.type} ${this.lexeme} ${this.literal}`;
+            }
+        }
+    } else if (type === TokenType.STRING) {
+        return {
+            type,
+            lexeme,
+            literal: literal as string,
+            line,
+
+            [Symbol.toStringTag]() {
+                return `${this.type} ${this.lexeme} ${this.literal}`;
+            }
+        }
+    } else {
+        return {
+            type,
+            lexeme,
+            line,
+
+            [Symbol.toStringTag]() {
+                return `${this.type} ${this.lexeme}`;
+            }
+        }
     }
 }
+
+// makeToken(TokenType.NUMBER, "", 0, 0);
+// makeToken(TokenType.NUMBER, "", "", 0);
+// makeToken(TokenType.NUMBER, "", null, 0);
+// makeToken(TokenType.STRING, "", 0, 0);
+// makeToken(TokenType.STRING, "", "", 0);
+// makeToken(TokenType.STRING, "", null, 0);
+// makeToken(TokenType.RETURN, "", 0, 0);
+// makeToken(TokenType.RETURN, "", "", 0);
+// makeToken(TokenType.RETURN, "", null, 0);

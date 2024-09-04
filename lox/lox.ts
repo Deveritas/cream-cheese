@@ -1,4 +1,4 @@
-import { Scanner } from "./scanner.ts";
+import { scan } from "./scanner.ts";
 import { Token } from "./token.ts";
 import { DenoReporter } from "./error/error_reporter.ts";
 
@@ -7,8 +7,8 @@ export class Lox {
 
     static run(script: string): void {
         const reporter = new DenoReporter()
-        const scanner = new Scanner(script, reporter);
-        const tokens: Token[] = scanner.scanTokens();
+        const tokenSource = scan(script, reporter);
+        const tokens: Token[] = Array.from(tokenSource);
 
         for (const token of tokens) {
             console.log(token);

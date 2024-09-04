@@ -1,84 +1,139 @@
 import { ErrorReporter } from "./error/error_reporter.ts";
-import { Token, TokenType } from "./token.ts";
+import { Token, TokenType as TType, LiteralFor, makeToken } from "./token.ts";
 
-export class Scanner {
-    readonly source: string;
-    readonly reporter: ErrorReporter;
+const KEYWORDS = new Map([
+  ["and", TType.AND],
+  ["class", TType.CLASS],
+  ["else", TType.ELSE],
+  ["false", TType.FALSE],
+  ["for", TType.FOR],
+  ["fun", TType.FUN],
+  ["if", TType.IF],
+  ["nil", TType.NIL],
+  ["or", TType.OR],
+  ["print", TType.PRINT],
+  ["return", TType.RETURN],
+  ["super", TType.SUPER],
+  ["this", TType.THIS],
+  ["true", TType.TRUE],
+  ["var", TType.VAR],
+  ["while", TType.WHILE],
+]);
 
-    tokens: Token[] = [];
+export interface Scanner extends Iterable<Token> {
+  start: number,
+  current: number,
+  line: number,
 
-    private start: number = 0;
-    private current: number = 0;
-    private line: number = 1;
+  scanToken: () => Token | ScanError | null,
+  [Symbol.iterator]: () => Iterator<Token, Token, undefined>,
+}
 
-    private keywords = new Map([
-      ["and", TokenType.AND],
-      ["class", TokenType.CLASS],
-      ["else", TokenType.ELSE],
-      ["false", TokenType.FALSE],
-      ["for", TokenType.FOR],
-      ["fun", TokenType.FUN],
-      ["if", TokenType.IF],
-      ["nil", TokenType.NIL],
-      ["or", TokenType.OR],
-      ["print", TokenType.PRINT],
-      ["return", TokenType.RETURN],
-      ["super", TokenType.SUPER],
-      ["this", TokenType.THIS],
-      ["true", TokenType.TRUE],
-      ["var", TokenType.VAR],
-      ["while", TokenType.WHILE],
-    ]);
+interface ScanError {
+  line: number,
+  message: string,
+}
 
-    constructor(script: string, reporter: ErrorReporter) {
-        this.source = script;
-        this.reporter = reporter;
-    }
+function isScanError(thing: ReturnType<Scanner['scanToken']>): thing is ScanError {
+  if (thing === null) return false;
+  return ("message" in thing);
+}
 
-    isAtEnd() {
-      return this.current >= this.source.length;
-    }
+export function scan(source: string, reporter: ErrorReporter): Scanner {
 
-    scanTokens(): Token[] {
-      while (!this.isAtEnd()) {
-        this.start = this.current;
-        this.scanToken()
-      }
+  const isAtEnd = () => scanner.current >= source.length;
 
-      this.tokens.push(new Token(TokenType.EOF, "", null, this.line))
-      return this.tokens;
-    }
+  const isDigit = (c: string) => {
+    const charCode = c.charCodeAt(0);
+    const zeroChar = '0'.charCodeAt(0);
+    const nineChar = '9'.charCodeAt(0);
 
-    scanToken(): void {
+    return zeroChar <= charCode && charCode <= nineChar;
+  }
+
+  const isAlpha = (c: string) => {
+    const charCode = c.charCodeAt(0);
+    const aChar = 'a'.charCodeAt(0);
+    const zChar = 'z'.charCodeAt(0);
+    const AChar = 'A'.charCodeAt(0);
+    const ZChar = 'Z'.charCodeAt(0);
+    const _Char = '_'.charCodeAt(0);
+
+    return (aChar <= charCode && charCode <= zChar) ||
+           (AChar <= charCode && charCode <= ZChar) ||
+            charCode == _Char;
+  }
+
+  const isAlphaNumeric = (c: string) => isAlpha(c) || isDigit(c);
+
+
+  const scanner = {
+    start: 0,
+    current: 0,
+    line: 1,
+
+    isAtEnd(): boolean {
+      return this.current >= source.length
+    },
+
+    peek(): string {
+      if (this.isAtEnd()) return '\0';
+      return source.charAt(this.current);
+    },
+
+    peekNext() {
+      if (this.isAtEnd()) return '\0';
+      this.current++;
+      if (this.isAtEnd()) return '\0';
+      return source.charAt(this.current--);
+    },
+
+    match(expected: string): boolean {
+      if (this.isAtEnd()) return false;
+      if (source.charAt(this.current) != expected) return false;
+
+      this.current++;
+      return true;
+    },
+
+    advance(): string {
+      return source.charAt(this.current++);
+    },
+
+
+
+    makeToken: function(type: TType, literal: LiteralFor<typeof type> = null) {
+      const text = source.substring(this.start, this.current);
+      return makeToken(type, text, literal, this.line);
+    },
+
+    // Returns the next token, an error, or null in the case of whitespace
+    scanToken: function(): Token | ScanError | null {
       const c = this.advance();
       switch (c) {
-        case '(': this.addToken(TokenType.LEFT_PAREN); break;
-        case ')': this.addToken(TokenType.RIGHT_PAREN); break;
-        case '{': this.addToken(TokenType.LEFT_BRACE); break;
-        case '}': this.addToken(TokenType.RIGHT_BRACE); break;
-        case ',': this.addToken(TokenType.COMMA); break;
-        case '.': this.addToken(TokenType.DOT); break;
-        case '-': this.addToken(TokenType.MINUS); break;
-        case '+': this.addToken(TokenType.PLUS); break;
-        case ';': this.addToken(TokenType.SEMICOLON); break;
-        case '*': this.addToken(TokenType.STAR); break;
+        case '(': return this.makeToken(TType.LEFT_PAREN);
+        case ')': return this.makeToken(TType.RIGHT_PAREN);
+        case '{': return this.makeToken(TType.LEFT_BRACE);
+        case '}': return this.makeToken(TType.RIGHT_BRACE);
+        case ',': return this.makeToken(TType.COMMA);
+        case '.': return this.makeToken(TType.DOT);
+        case '-': return this.makeToken(TType.MINUS);
+        case '+': return this.makeToken(TType.PLUS);
+        case ';': return this.makeToken(TType.SEMICOLON);
+        case '*': return this.makeToken(TType.STAR);
         case '!':
-          this.addToken(this.match('=') ? TokenType.BANG_EQUAL : TokenType.BANG);
-          break;
+          return this.makeToken(this.match('=') ? TType.BANG_EQUAL : TType.BANG);
         case '=':
-          this.addToken(this.match('=') ? TokenType.EQUAL_EQUAL : TokenType.EQUAL);
-          break;
+          return this.makeToken(this.match('=') ? TType.EQUAL_EQUAL : TType.EQUAL);
         case '>':
-          this.addToken(this.match('=') ? TokenType.GREATER_EQUAL : TokenType.GREATER);
-          break;
+          return this.makeToken(this.match('=') ? TType.GREATER_EQUAL : TType.GREATER);
         case '<':
-          this.addToken(this.match('=') ? TokenType.LESS_EQUAL : TokenType.LESS);
-          break;
+          return this.makeToken(this.match('=') ? TType.LESS_EQUAL : TType.LESS);
         case '/':
           if (this.match('/')) {
             while (this.peek() != '\n' && !this.isAtEnd()) this.advance();
           } else {
-            this.addToken(TokenType.SLASH);
+            return this.makeToken(TType.SLASH);
           }
           break;
         case ' ':
@@ -89,108 +144,81 @@ export class Scanner {
           this.line++;
           break;
         
-        case '"': this.string(); break;
+        case '"': return this.string();
 
         default:
-          if (this.isDigit(c)) {
-            this.number();
-          } else if (this.isAlpha(c)) {
-            this.identifier();
+          if (isDigit(c)) {
+            return this.number();
+          } else if (isAlpha(c)) {
+            return this.identifier();
           } else {
-            this.reporter.error(this.line, "Unexpected character.");
+            return {
+              line: this.line,
+              message: "Unexpected character."
+            };
           }
-          break;
       }
-    }
 
-    peek() {
-      if (this.isAtEnd()) return '\0';
-      return this.source.charAt(this.current);
-    }
+      return null;
+    },
 
-    peekNext() {
-      if (this.isAtEnd()) return '\0';
-      this.current++;
-      if (this.isAtEnd()) return '\0';
-      return this.source.charAt(this.current--);
-    }
 
-    match(expected: string): boolean {
-      if (this.isAtEnd()) return false;
-      if (this.source.charAt(this.current) != expected) return false;
-
-      this.current++;
-      return true;
-    }
-
-    advance(): string {
-      return this.source.charAt(this.current++);
-    }
-
-    addToken(type: TokenType, literal: string | number | null = null) {
-      const text = this.source.substring(this.start, this.current);
-      this.tokens.push(new Token(type, text, literal, this.line));
-    }
-
-    isDigit(c: string) {
-      const charCode = c.charCodeAt(0);
-      const zeroChar = '0'.charCodeAt(0);
-      const nineChar = '9'.charCodeAt(0);
-
-      return zeroChar <= charCode && charCode <= nineChar;
-    }
-
-    isAlpha(c: string) {
-      const charCode = c.charCodeAt(0);
-      const aChar = 'a'.charCodeAt(0);
-      const zChar = 'z'.charCodeAt(0);
-      const AChar = 'A'.charCodeAt(0);
-      const ZChar = 'Z'.charCodeAt(0);
-      const _Char = '_'.charCodeAt(0);
-
-      return (aChar <= charCode && charCode <= zChar) ||
-             (AChar <= charCode && charCode <= ZChar) ||
-              charCode == _Char;
-    }
-
-    isAlphaNumeric(c: string) {
-      return this.isAlpha(c) || this.isDigit(c);
-    }
-
-    string() {
+    string(): Token | ScanError {
       while(this.peek() != '"' && !this.isAtEnd()) {
         if (this.peek() === '\n') this.line++;
         this.advance();
       }
 
       if (this.isAtEnd()) {
-        this.reporter.error(this.line, "Unterminated string.");
+        return {
+          line: this.line,
+          message: "Unterminated string.",
+        };
       }
 
       // Closing "
       this.advance();
   
-      const value = this.source.substring(this.start + 1, this.current - 1);
-      this.addToken(TokenType.STRING, value);
-    }
+      const value = source.substring(this.start + 1, this.current - 1);
+      return this.makeToken(TType.STRING, value);
+    },
 
-    number() {
-      while (this.isDigit(this.peek())) this.advance();
+    number(): Token {
+      while (isDigit(this.peek())) this.advance();
   
-      if (this.peek() == '.' && this.isDigit(this.peekNext())) {
+      if (this.peek() == '.' && isDigit(this.peekNext())) {
         this.advance();
-        while (this.isDigit(this.peek())) this.advance();
+        while (isDigit(this.peek())) this.advance();
       }
 
-      this.addToken(TokenType.NUMBER, Number(this.source.substring(this.start, this.current)));
-    }
+      return this.makeToken(TType.NUMBER, Number(source.substring(this.start, this.current)));
+    },
 
-    identifier() {
-      while(this.isAlphaNumeric(this.peek())) this.advance();
+    identifier(): Token {
+      while(isAlphaNumeric(this.peek())) this.advance();
 
-      const text = this.source.substring(this.start, this.current);
-      let type = this.keywords.get(text);
-      if (type === undefined) type = TokenType.IDENTIFIER;
-      this.addToken(type);
+      const text = source.substring(this.start, this.current);
+      let type = KEYWORDS.get(text);
+      if (type === undefined) type = TType.IDENTIFIER;
+      return this.makeToken(type);
+    },
+  
+    [Symbol.iterator]: function* (): Iterator<Token, Token, undefined> {
+      while (!isAtEnd()) {
+        this.start = this.current;
+        const token = this.scanToken();
+        if (isScanError(token)) {
+          reporter.error(token.line, token.message)
+        } else if (token === null) {
+          //Whitespace, continue
+        } else {
+          yield token;
+        }
+      }
+
+      return makeToken(TType.EOF, "", null, this.line);
     }
+  }
+
+  return scanner;
 }
